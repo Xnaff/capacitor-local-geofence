@@ -2,14 +2,26 @@ import XCTest
 @testable import LocalGeofencePlugin
 
 class LocalGeofenceTests: XCTestCase {
-    func testEcho() {
-        // This is an example of a functional test case for a plugin.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+    private let utc = TimeZone(identifier: "UTC")!
 
-        let implementation = LocalGeofence()
-        let value = "Hello, World!"
-        let result = implementation.echo(value)
+    func testFillsTimePlaceholder() {
+        // 2026-11-03T17:42:00Z
+        let text = GeofenceLogic.fillTemplate("Work ended at {time}?", timestamp: 1_793_727_720_000, locale: Locale(identifier: "de_DE"), timeZone: utc)
+        XCTAssertEqual(text, "Work ended at 17:42?")
+    }
 
-        XCTAssertEqual(value, result)
+    func testLeavesTemplateWithoutPlaceholder() {
+        XCTAssertEqual(GeofenceLogic.fillTemplate("Hello", timestamp: 0, locale: Locale(identifier: "de_DE"), timeZone: utc), "Hello")
+    }
+
+    func testSkipsRepeatedTransition() {
+        XCTAssertTrue(GeofenceLogic.isNewTransition(last: nil, transition: "enter"))
+        XCTAssertTrue(GeofenceLogic.isNewTransition(last: "enter", transition: "exit"))
+        XCTAssertFalse(GeofenceLogic.isNewTransition(last: "exit", transition: "exit"))
+    }
+
+    func testKeepsNewestEvents() {
+        XCTAssertEqual(GeofenceLogic.keepNewest([1, 2, 3, 4], max: 2), [3, 4])
+        XCTAssertEqual(GeofenceLogic.keepNewest([1], max: 2), [1])
     }
 }

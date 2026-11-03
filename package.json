@@ -1,6 +1,6 @@
 {
   "name": "capacitor-local-geofence",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Server-free geofencing for Capacitor: enter/exit events persisted on device with timestamps and native local notifications, even when the app is closed.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -13,7 +13,8 @@
     "ios/Sources",
     "ios/Tests",
     "Package.swift",
-    "CapacitorLocalGeofence.podspec"
+    "CapacitorLocalGeofence.podspec",
+    "CHANGELOG.md"
   ],
   "author": "Jan Emig",
   "license": "MIT",
@@ -27,7 +28,11 @@
   "keywords": [
     "capacitor",
     "plugin",
-    "native"
+    "native",
+    "geofence",
+    "geofencing",
+    "location",
+    "offline"
   ],
   "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
@@ -76,5 +81,6 @@
     "android": {
       "src": "android"
     }
-  }
+  },
+  "homepage": "https://github.com/Xnaff/capacitor-local-geofence#readme"
 }
