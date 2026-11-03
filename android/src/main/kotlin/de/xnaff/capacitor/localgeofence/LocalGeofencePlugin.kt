@@ -33,6 +33,10 @@ class LocalGeofencePlugin : Plugin() {
     override fun load() {
         store = GeofenceStore(context)
         instance = this
+        // A new process may follow a force-stop, which silently removes all geofences; positions may
+        // have changed unobserved, and without initial triggers a stale baseline would drop a real event.
+        // Costs at most one repeated event after an ordinary cold start.
+        store.forgetTransitions()
         GeofenceRegistrar.restoreAll(context)
     }
 
@@ -52,7 +56,11 @@ class LocalGeofencePlugin : Plugin() {
 
     @PluginMethod
     override fun requestPermissions(call: PluginCall) {
-        val requested = call.getArray("permissions")?.toList<String>() ?: listOf(LOCATION, NOTIFICATIONS)
+        val requested = if (call.data.has("permissions")) {
+            stringList(call, "permissions") ?: return call.reject("permissions must be an array of strings")
+        } else {
+            listOf(LOCATION, NOTIFICATIONS)
+        }
         requested.firstOrNull { it !in ALIASES }?.let { return call.reject("Unknown permission: $it") }
         // Below these SDK levels the permission does not exist and is implied.
         val aliases = requested.filter {
@@ -135,12 +143,17 @@ class LocalGeofencePlugin : Plugin() {
     fun clearEvents(call: PluginCall) {
         // A present but malformed ids value must never fall through to "delete all".
         val ids = if (call.data.has("ids")) {
-            val array = call.data.optJSONArray("ids") ?: return call.reject("ids must be an array of strings")
-            (0 until array.length()).map { array.opt(it) as? String ?: return call.reject("ids must be an array of strings") }.toSet()
+            stringList(call, "ids")?.toSet() ?: return call.reject("ids must be an array of strings")
         } else {
             null
         }
         if (store.clearEvents(ids)) call.resolve() else call.reject("Could not persist", "STORAGE_FAILED")
+    }
+
+    /** The option as a list of strings, or null when it is not an array of strings. */
+    private fun stringList(call: PluginCall, key: String): List<String>? {
+        val array = call.data.optJSONArray(key) ?: return null
+        return (0 until array.length()).map { array.opt(it) as? String ?: return null }
     }
 
     private fun notification(source: JSObject): JSONObject =

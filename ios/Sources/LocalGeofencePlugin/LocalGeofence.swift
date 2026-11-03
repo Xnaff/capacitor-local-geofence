@@ -21,6 +21,24 @@ import UserNotifications
     override private init() {
         super.init()
         manager.delegate = self
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.reconcile() }
+        DispatchQueue.main.async { self.reconcile() }
+    }
+
+    /// Re-monitors stored regions iOS is not monitoring (e.g. after a failed rollback).
+    func reconcile() {
+        guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
+        let monitored = Set(manager.monitoredRegions.map { $0.identifier })
+        for region in store.regions() {
+            guard let id = region["id"] as? String, !monitored.contains(id), pendingStarts[id] == nil,
+                  let latitude = region["latitude"] as? Double,
+                  let longitude = region["longitude"] as? Double,
+                  let radius = region["radius"] as? Double else { continue }
+            pendingStarts[id] = PendingStart(previous: region, previousLast: store.lastTransition(id), isRollback: true, done: { _ in })
+            manager.startMonitoring(for: circularRegion(id: id, latitude: latitude, longitude: longitude, radius: radius))
+        }
     }
 
     // MARK: Regions
@@ -162,7 +180,7 @@ import UserNotifications
         for id in ids {
             guard let pending = pendingStarts.removeValue(forKey: id) else { continue }
             if pending.isRollback {
-                // The previous configuration stays stored; it is monitored again on the next addRegion.
+                // The previous configuration stays stored; reconcile() retries it on the next activation.
                 pending.done(error)
                 continue
             }
