@@ -20,6 +20,9 @@ import UserNotifications
 
     override private init() {
         super.init()
+        // Like Android: a new process may follow an interruption (Background App Refresh off, force quit)
+        // during which boundaries were crossed unobserved. Costs at most one repeated event.
+        store.forgetTransitions()
         manager.delegate = self
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
@@ -184,6 +187,7 @@ import UserNotifications
     public func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
         // A failure without a region is service-wide; it answers every pending start.
         let ids = region.map { [$0.identifier] } ?? Array(pendingStarts.keys)
+        store.forgetTransitions(region.map { [$0.identifier] })
         for id in ids {
             guard let pending = pendingStarts.removeValue(forKey: id) else { continue }
             if pending.isRollback {
