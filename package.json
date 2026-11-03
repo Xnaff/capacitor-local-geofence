@@ -1,6 +1,6 @@
 {
   "name": "capacitor-local-geofence",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Server-free geofencing for Capacitor: enter/exit events persisted on device with timestamps and native local notifications, even when the app is closed.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
