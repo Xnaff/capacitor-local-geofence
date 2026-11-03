@@ -31,6 +31,8 @@ import UserNotifications
     func reconcile() {
         guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
         let monitored = Set(manager.monitoredRegions.map { $0.identifier })
+        let missing = store.regions().compactMap { $0["id"] as? String }.filter { !monitored.contains($0) && pendingStarts[$0] == nil }
+        store.forgetTransitions(missing)
         for region in store.regions() {
             guard let id = region["id"] as? String, !monitored.contains(id), pendingStarts[id] == nil,
                   let latitude = region["latitude"] as? Double,
@@ -159,6 +161,11 @@ import UserNotifications
     }
 
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // Without (precise) authorization iOS delivers no region events; positions may change unobserved.
+        let authorized = manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse
+        if !authorized || manager.accuracyAuthorization != .fullAccuracy {
+            store.forgetTransitions()
+        }
         if manager.authorizationStatus != .notDetermined {
             flushAuthorizationWaiters()
         }

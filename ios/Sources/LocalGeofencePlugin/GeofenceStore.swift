@@ -47,6 +47,15 @@ final class GeofenceStore {
         save(current)
     }
 
+    /// Monitoring was interrupted: the device may have crossed any boundary unobserved.
+    func forgetTransitions(_ ids: [String]? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        var current = state()
+        if let ids = ids { ids.forEach { current.last.removeValue(forKey: $0) } } else { current.last.removeAll() }
+        save(current)
+    }
+
     func removeRegion(_ id: String) {
         lock.lock()
         defer { lock.unlock() }

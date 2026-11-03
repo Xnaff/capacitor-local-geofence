@@ -63,4 +63,15 @@ class LocalGeofenceTests: XCTestCase {
         XCTAssertEqual(store.lastTransition("home"), "enter")
         store.removeRegion("home")
     }
+
+    func testInterruptionForgetsBaseline() {
+        let store = GeofenceStore()
+        store.removeRegion("work")
+        XCTAssertTrue(store.record("work", transition: "exit", event: nil))
+        XCTAssertFalse(store.record("work", transition: "exit", event: nil))
+        store.forgetTransitions()
+        // After an interruption the same direction is a real transition again.
+        XCTAssertTrue(store.record("work", transition: "exit", event: nil))
+        store.removeRegion("work")
+    }
 }
