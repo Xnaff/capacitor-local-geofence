@@ -52,6 +52,7 @@ class LocalGeofencePlugin : Plugin() {
     @PluginMethod
     override fun requestPermissions(call: PluginCall) {
         val requested = call.getArray("permissions")?.toList<String>() ?: listOf(LOCATION, NOTIFICATIONS)
+        requested.firstOrNull { it !in ALIASES }?.let { return call.reject("Unknown permission: $it") }
         // Below these SDK levels the permission does not exist and is implied.
         val aliases = requested.filter {
             when (it) {
@@ -161,6 +162,7 @@ class LocalGeofencePlugin : Plugin() {
         const val LOCATION = "location"
         const val BACKGROUND_LOCATION = "backgroundLocation"
         const val NOTIFICATIONS = "notifications"
+        private val ALIASES = setOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS)
 
         @Volatile
         private var instance: LocalGeofencePlugin? = null

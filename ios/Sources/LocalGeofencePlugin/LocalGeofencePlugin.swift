@@ -33,6 +33,9 @@ public class LocalGeofencePlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc override public func requestPermissions(_ call: CAPPluginCall) {
         let requested = call.getArray("permissions", String.self) ?? ["location", "notifications"]
+        if let unknown = requested.first(where: { !["location", "backgroundLocation", "notifications"].contains($0) }) {
+            return call.reject("Unknown permission: \(unknown)")
+        }
         DispatchQueue.main.async {
             self.request(requested) { self.permissionStatus { call.resolve($0) } }
         }

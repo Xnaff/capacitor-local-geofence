@@ -24,35 +24,53 @@ object GeofenceRegistrar {
 
     private val LOCK = Any()
 
+    /** Region ids with an add/remove still waiting for Play services; guarded by LOCK. */
+    private val inFlight = mutableSetOf<String>()
+
+    private fun begin(id: String) {
+        if (!inFlight.add(id)) throw IllegalStateException("An operation for $id is still pending")
+    }
+
+    private fun <T> Task<T>.finishing(id: String): Task<T> = addOnCompleteListener { synchronized(LOCK) { inFlight.remove(id) } }
+
     private const val REQUEST_CODE = 0x6E0F
 
     fun hasLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
-    /** Stores [region] and submits it; a failed registration restores the previous stored region. */
+    /**
+     * Stores [region] and submits it; a failed registration restores the previous stored region.
+     * One operation per id at a time, so a rollback never restores another failed operation's state.
+     */
     fun add(context: Context, region: JSONObject): Task<Void> = synchronized(LOCK) {
         val store = GeofenceStore(context)
         val id = region.getString("id")
+        begin(id)
         val previous = store.region(id)
-        if (!store.saveRegion(region)) throw IllegalStateException("Could not persist region")
         val task = try {
+            if (!store.saveRegion(region)) throw IllegalStateException("Could not persist region")
             register(context, region)
         } catch (error: Exception) {
             revert(store, id, region, previous)
+            inFlight.remove(id)
             throw error
         }
-        task.addOnFailureListener { synchronized(LOCK) { revert(store, id, region, previous) } }
+        task.addOnFailureListener { synchronized(LOCK) { revert(store, id, region, previous) } }.finishing(id)
     }
 
     /** Removes the stored region and submits the removal; a failed removal restores it. */
     fun remove(context: Context, id: String): Task<Void> = synchronized(LOCK) {
         val store = GeofenceStore(context)
+        begin(id)
         val previous = store.region(id)
-        if (!store.removeRegion(id)) throw IllegalStateException("Could not persist removal")
+        if (!store.removeRegion(id)) {
+            inFlight.remove(id)
+            throw IllegalStateException("Could not persist removal")
+        }
         LocationServices.getGeofencingClient(context).removeGeofences(listOf(id)).addOnFailureListener {
             synchronized(LOCK) { if (previous != null && store.region(id) == null) store.saveRegion(previous) }
-        }
+        }.finishing(id)
     }
 
     /** Undoes [attempted] only if no newer add or remove replaced it meanwhile. */

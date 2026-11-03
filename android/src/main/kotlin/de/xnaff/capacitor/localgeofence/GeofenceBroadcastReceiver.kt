@@ -80,7 +80,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
             .build()
-        NotificationManagerCompat.from(context).notify(region.getString("id").hashCode(), built)
+        NotificationManagerCompat.from(context).notify(region.getString("id"), NOTIFICATION_ID, built)
     }
 
     private fun smallIcon(context: Context, name: String): Int {
@@ -93,5 +93,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     companion object {
         const val CHANNEL_ID = "local_geofence"
+
+        // The region id is the notification tag, so each region keeps exactly one notification.
+        private const val NOTIFICATION_ID = 0x6E0F
     }
 }

@@ -96,12 +96,11 @@ import UserNotifications
         var promptShown = false
         let resignObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            promptShown = true
-            self?.store.alwaysAsked = true
-        }
-        waitForAuthorization {
+        ) { _ in promptShown = true }
+        waitForAuthorization { [weak self] in
             NotificationCenter.default.removeObserver(resignObserver)
+            // Only an observed decision ends retries; an interruption (call, app switch) leaves it askable.
+            if let self = self, self.manager.authorizationStatus != status { self.store.alwaysAsked = true }
             done()
         }
         manager.requestAlwaysAuthorization()
@@ -148,7 +147,10 @@ import UserNotifications
     }
 
     public func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
-        if let id = region?.identifier, let done = pendingStarts.removeValue(forKey: id) {
+        // A failure without a region is service-wide; it answers every pending start.
+        let ids = region.map { [$0.identifier] } ?? Array(pendingStarts.keys)
+        for id in ids {
+            guard let done = pendingStarts.removeValue(forKey: id) else { continue }
             // iOS already dropped any previous region with this id, so nothing is monitored under it now.
             store.removeRegion(id)
             done(error)
