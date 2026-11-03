@@ -44,8 +44,9 @@ import UserNotifications
             radius: min(radius, manager.maximumRegionMonitoringDistance),
             identifier: id
         )
-        circular.notifyOnEntry = region["notifyOnEnter"] as? Bool ?? true
-        circular.notifyOnExit = region["notifyOnExit"] as? Bool ?? true
+        // Both directions are always monitored so the last transition stays known; handle() filters.
+        circular.notifyOnEntry = true
+        circular.notifyOnExit = true
         store.saveRegion(region)
         manager.startMonitoring(for: circular)
     }
@@ -117,7 +118,8 @@ import UserNotifications
 
     private func handle(_ region: CLRegion, transition: String) {
         guard let stored = store.region(region.identifier) else { return }
-        guard GeofenceLogic.isNewTransition(last: store.lastTransition(region.identifier), transition: transition) else { return }
+        guard store.markTransition(region.identifier, transition: transition) else { return }
+        guard stored[transition == "enter" ? "notifyOnEnter" : "notifyOnExit"] as? Bool ?? true else { return }
 
         let timestamp = Date().timeIntervalSince1970 * 1000
         let event: [String: Any] = [

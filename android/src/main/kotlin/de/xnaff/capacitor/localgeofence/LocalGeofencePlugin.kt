@@ -35,6 +35,11 @@ class LocalGeofencePlugin : Plugin() {
         GeofenceRegistrar.restoreAll(context)
     }
 
+    /** Re-adds regions dropped while location was off or before permission was granted. */
+    override fun handleOnResume() {
+        GeofenceRegistrar.restoreAll(context)
+    }
+
     override fun handleOnDestroy() {
         if (instance === this) instance = null
     }
@@ -64,6 +69,7 @@ class LocalGeofencePlugin : Plugin() {
 
     @PermissionCallback
     private fun permissionsCallback(call: PluginCall) {
+        GeofenceRegistrar.restoreAll(context)
         call.resolve(permissionStatus())
     }
 
@@ -76,7 +82,7 @@ class LocalGeofencePlugin : Plugin() {
         if (id.isNullOrEmpty()) return call.reject("id is required")
         if (latitude == null || latitude < -90 || latitude > 90) return call.reject("latitude must be between -90 and 90")
         if (longitude == null || longitude < -180 || longitude > 180) return call.reject("longitude must be between -180 and 180")
-        if (radius == null || radius <= 0) return call.reject("radius must be greater than 0")
+        if (radius == null || radius <= 0 || radius > Float.MAX_VALUE) return call.reject("radius must be greater than 0")
         if (!GeofenceRegistrar.hasLocationPermission(context)) return call.reject("Location permission not granted", "PERMISSION_DENIED")
 
         val region = JSONObject()
@@ -90,10 +96,14 @@ class LocalGeofencePlugin : Plugin() {
         call.getObject("exitNotification")?.let { region.put("exitNotification", notification(it)) }
         call.getString("androidSmallIcon")?.let { region.put("androidSmallIcon", it) }
 
-        GeofenceRegistrar.register(context, region)
+        val task = try {
+            GeofenceRegistrar.register(context, region)
+        } catch (error: Exception) {
+            return call.reject("Could not add region: ${error.message}", "REGISTER_FAILED", error)
+        }
+        task
             .addOnSuccessListener {
-                store.saveRegion(region)
-                call.resolve()
+                if (store.saveRegion(region)) call.resolve() else call.reject("Could not persist region", "STORAGE_FAILED")
             }
             .addOnFailureListener { error -> call.reject("Could not add region: ${error.message}", "REGISTER_FAILED", error) }
     }
@@ -101,9 +111,10 @@ class LocalGeofencePlugin : Plugin() {
     @PluginMethod
     fun removeRegion(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("id is required")
-        store.removeRegion(id)
         GeofenceRegistrar.unregister(context, id)
-            .addOnSuccessListener { call.resolve() }
+            .addOnSuccessListener {
+                if (store.removeRegion(id)) call.resolve() else call.reject("Could not persist removal", "STORAGE_FAILED")
+            }
             .addOnFailureListener { error -> call.reject("Could not remove region: ${error.message}", "UNREGISTER_FAILED", error) }
     }
 
@@ -119,8 +130,7 @@ class LocalGeofencePlugin : Plugin() {
 
     @PluginMethod
     fun clearEvents(call: PluginCall) {
-        store.clearEvents(call.getArray("ids")?.toList<String>()?.toSet())
-        call.resolve()
+        if (store.clearEvents(call.getArray("ids")?.toList<String>()?.toSet())) call.resolve() else call.reject("Could not persist", "STORAGE_FAILED")
     }
 
     private fun notification(source: JSObject): JSONObject =

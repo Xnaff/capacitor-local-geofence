@@ -24,4 +24,16 @@ class LocalGeofenceTests: XCTestCase {
         XCTAssertEqual(GeofenceLogic.keepNewest([1, 2, 3, 4], max: 2), [3, 4])
         XCTAssertEqual(GeofenceLogic.keepNewest([1], max: 2), [1])
     }
+
+    func testFilteredDirectionStillUpdatesLastTransition() {
+        let store = GeofenceStore()
+        store.removeRegion("exit-only")
+        XCTAssertTrue(store.markTransition("exit-only", transition: "exit"))
+        // An enter the region does not record must still be remembered ...
+        XCTAssertTrue(store.markTransition("exit-only", transition: "enter"))
+        // ... so the next exit counts as new.
+        XCTAssertTrue(store.markTransition("exit-only", transition: "exit"))
+        XCTAssertFalse(store.markTransition("exit-only", transition: "exit"))
+        store.removeRegion("exit-only")
+    }
 }
