@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
-import com.google.android.gms.tasks.Tasks
 
 /**
  * Re-adds regions after a reboot, an app update or location being turned back on; all three clear
@@ -13,9 +12,9 @@ import com.google.android.gms.tasks.Tasks
 class GeofenceBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action in RESTORE_ACTIONS) {
-            // Keep the process alive until Play services confirmed every registration.
-            val pending = goAsync()
-            Tasks.whenAllComplete(GeofenceRegistrar.restoreAll(context)).addOnCompleteListener { pending.finish() }
+            // Positions may have changed unobserved while geofences were gone.
+            GeofenceStore(context).forgetTransitions()
+            GeofenceRestoreWorker.enqueue(context)
         }
     }
 

@@ -28,6 +28,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         if (event.hasError()) {
             // GEOFENCE_NOT_AVAILABLE: location was turned off; regions stay stored and are restored when location is turned back on (GeofenceBootReceiver), on app resume and on boot.
             Logger.error("LocalGeofence", "Geofence error: ${GeofenceStatusCodes.getStatusCodeString(event.errorCode)}", null)
+            if (event.errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) GeofenceStore(context).forgetTransitions()
             return
         }
         val transition = when (event.geofenceTransition) {

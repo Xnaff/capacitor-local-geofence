@@ -34,7 +34,7 @@ import UserNotifications
     }
 
     /// Pending addRegion completions per region id, finished by didStartMonitoringFor / monitoringDidFailFor.
-    private var pendingStarts: [String: (Error?) -> Void] = [:]
+    private var pendingStarts: [String: (previous: [String: Any]?, done: (Error?) -> Void)] = [:]
 
     func startMonitoring(_ region: [String: Any], done: @escaping (Error?) -> Void) throws {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
@@ -53,6 +53,12 @@ import UserNotifications
         guard pendingStarts[id] == nil else {
             throw GeofenceError("addRegion for \(id) is still pending")
         }
+        pendingStarts[id] = (previous: store.region(id), done: done)
+        store.saveRegion(region)
+        manager.startMonitoring(for: circularRegion(id: id, latitude: latitude, longitude: longitude, radius: radius))
+    }
+
+    private func circularRegion(id: String, latitude: Double, longitude: Double, radius: Double) -> CLCircularRegion {
         let circular = CLCircularRegion(
             center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
             radius: radius,
@@ -61,13 +67,11 @@ import UserNotifications
         // Both directions are always monitored so the last transition stays known; handle() filters.
         circular.notifyOnEntry = true
         circular.notifyOnExit = true
-        pendingStarts[id] = done
-        store.saveRegion(region)
-        manager.startMonitoring(for: circular)
+        return circular
     }
 
     public func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
-        pendingStarts.removeValue(forKey: region.identifier)?(nil)
+        pendingStarts.removeValue(forKey: region.identifier)?.done(nil)
     }
 
     func stopMonitoring(_ id: String) throws {
@@ -94,13 +98,22 @@ import UserNotifications
         let status = manager.authorizationStatus
         guard status == .notDetermined || (status == .authorizedWhenInUse && !store.alwaysAsked) else { return done() }
         var promptShown = false
+        var wentToBackground = false
         let resignObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
         ) { _ in promptShown = true }
+        let backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { _ in wentToBackground = true }
         waitForAuthorization { [weak self] in
             NotificationCenter.default.removeObserver(resignObserver)
-            // Only an observed decision ends retries; an interruption (call, app switch) leaves it askable.
-            if let self = self, self.manager.authorizationStatus != status { self.store.alwaysAsked = true }
+            NotificationCenter.default.removeObserver(backgroundObserver)
+            // The system prompt resigns active without backgrounding the app; a call or app switch backgrounds
+            // it and leaves the upgrade askable. Declining keeps whenInUse, so a status change alone is not enough.
+            guard let self = self else { return done() }
+            if self.manager.authorizationStatus != status || (promptShown && !wentToBackground) {
+                self.store.alwaysAsked = true
+            }
             done()
         }
         manager.requestAlwaysAuthorization()
@@ -150,10 +163,18 @@ import UserNotifications
         // A failure without a region is service-wide; it answers every pending start.
         let ids = region.map { [$0.identifier] } ?? Array(pendingStarts.keys)
         for id in ids {
-            guard let done = pendingStarts.removeValue(forKey: id) else { continue }
-            // iOS already dropped any previous region with this id, so nothing is monitored under it now.
-            store.removeRegion(id)
-            done(error)
+            guard let pending = pendingStarts.removeValue(forKey: id) else { continue }
+            // iOS already dropped any previous region with this id; monitor the previous one again.
+            if let previous = pending.previous,
+               let latitude = previous["latitude"] as? Double,
+               let longitude = previous["longitude"] as? Double,
+               let radius = previous["radius"] as? Double {
+                store.saveRegion(previous)
+                manager.startMonitoring(for: circularRegion(id: id, latitude: latitude, longitude: longitude, radius: radius))
+            } else {
+                store.removeRegion(id)
+            }
+            pending.done(error)
         }
         CAPLog.print("⚡️  LocalGeofence: " + "Monitoring failed for \(region?.identifier ?? "unknown region"): \(error.localizedDescription)")
     }

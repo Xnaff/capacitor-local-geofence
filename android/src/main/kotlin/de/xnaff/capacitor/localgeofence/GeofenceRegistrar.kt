@@ -92,10 +92,13 @@ object GeofenceRegistrar {
         return LocationServices.getGeofencingClient(context).addGeofences(request, pendingIntent(context))
     }
 
-    /** Play services drops all geofences on reboot, app update and location toggles; re-add them. */
+    /**
+     * Play services drops all geofences on reboot, app update and location toggles; re-add them.
+     * Regions with a pending add/remove are skipped: that operation registers their final state.
+     */
     fun restoreAll(context: Context): List<Task<Void>> = synchronized(LOCK) {
         if (!hasLocationPermission(context)) return emptyList()
-        GeofenceStore(context).regions().mapNotNull { region ->
+        GeofenceStore(context).regions().filterNot { inFlight.contains(it.optString("id")) }.mapNotNull { region ->
             try {
                 register(context, region).addOnFailureListener { error ->
                     Logger.error("LocalGeofence", "Could not restore region ${region.optString("id")}", error)

@@ -50,6 +50,13 @@ class GeofenceStore(context: Context) {
         editor.commit()
     }
 
+    /** Monitoring was interrupted: the device may have crossed any boundary unobserved. */
+    fun forgetTransitions(): Boolean = synchronized(LOCK) {
+        val editor = prefs.edit()
+        prefs.all.keys.filter { it.startsWith(KEY_LAST_PREFIX) }.forEach { editor.remove(it) }
+        editor.commit()
+    }
+
     fun clearEvents(ids: Set<String>?): Boolean = synchronized(LOCK) {
         val kept = if (ids == null) emptyList() else events().filterNot { ids.contains(it.getString("id")) }
         prefs.edit().putString(KEY_EVENTS, JSONArray(kept).toString()).commit()
