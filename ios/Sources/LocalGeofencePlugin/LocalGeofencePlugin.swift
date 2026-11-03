@@ -81,9 +81,14 @@ public class LocalGeofencePlugin: CAPPlugin, CAPBridgedPlugin {
             guard status == .authorizedAlways || status == .authorizedWhenInUse else {
                 return call.reject("Location permission not granted", "PERMISSION_DENIED")
             }
+            // Region monitoring needs precise location; with approximate location iOS delivers no events.
+            guard self.implementation.hasFullAccuracy else {
+                return call.reject("Precise location is turned off", "PERMISSION_DENIED")
+            }
             do {
-                try self.implementation.startMonitoring(region)
-                call.resolve()
+                try self.implementation.startMonitoring(region) { error in
+                    if let error = error { call.reject(error.localizedDescription, "REGISTER_FAILED") } else { call.resolve() }
+                }
             } catch {
                 call.reject(error.localizedDescription, "REGISTER_FAILED")
             }
@@ -121,6 +126,10 @@ public class LocalGeofencePlugin: CAPPlugin, CAPBridgedPlugin {
             let location: String
             let background: String
             switch status {
+            case _ where !self.implementation.hasFullAccuracy && status != .notDetermined:
+                // Approximate location cannot geofence; report it as not granted (same as Android coarse-only).
+                location = "denied"
+                background = "denied"
             case .authorizedAlways:
                 location = "granted"
                 background = "granted"

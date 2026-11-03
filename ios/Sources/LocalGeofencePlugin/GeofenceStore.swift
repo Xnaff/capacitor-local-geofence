@@ -26,6 +26,10 @@ final class GeofenceStore {
         var map = regionMap()
         map[id] = region
         defaults.set(map, forKey: regionsKey)
+        // New geometry: the previous position relative to the old region says nothing about this one.
+        var last = lastMap()
+        last.removeValue(forKey: id)
+        defaults.set(last, forKey: lastKey)
     }
 
     func removeRegion(_ id: String) {
@@ -39,26 +43,24 @@ final class GeofenceStore {
         defaults.set(last, forKey: lastKey)
     }
 
-    /// Remembers `transition` and returns true when it differs from the previous one. Also called for
-    /// directions the region does not record, so a later opposite event is not lost.
-    func markTransition(_ regionId: String, transition: String) -> Bool {
+    /// Remembers `transition` and, together with it, appends `event`. Returns false for a repeated
+    /// transition. Called with a nil event for directions the region does not record, so a later
+    /// opposite event is not lost.
+    func record(_ regionId: String, transition: String, event: [String: Any]?) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         var last = lastMap()
         guard GeofenceLogic.isNewTransition(last: last[regionId], transition: transition) else { return false }
         last[regionId] = transition
         defaults.set(last, forKey: lastKey)
+        if let event = event {
+            defaults.set(GeofenceLogic.keepNewest(events() + [event]), forKey: eventsKey)
+        }
         return true
     }
 
     func events() -> [[String: Any]] {
         return defaults.array(forKey: eventsKey) as? [[String: Any]] ?? []
-    }
-
-    func addEvent(_ event: [String: Any]) {
-        lock.lock()
-        defer { lock.unlock() }
-        defaults.set(GeofenceLogic.keepNewest(events() + [event]), forKey: eventsKey)
     }
 
     func clearEvents(_ ids: Set<String>?) {

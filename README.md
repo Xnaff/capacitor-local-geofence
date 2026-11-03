@@ -48,7 +48,22 @@ Add to `ios/App/App/Info.plist`:
 ```
 
 No background mode is required: region monitoring relaunches the app in the background for each transition.
-iOS monitors at most 20 regions per app. Events while the app is closed need the "Always" permission.
+iOS monitors at most 20 regions per app. Events while the app is closed need the "Always" permission and
+**precise location** (with approximate location `location` reports `denied` and `addRegion` rejects).
+
+Recreate the region monitor at launch so events that relaunch a closed app are not missed before the
+Capacitor bridge has loaded. In `ios/App/App/AppDelegate.swift`:
+
+```swift
+import LocalGeofencePlugin        // CocoaPods projects: import CapacitorLocalGeofence
+
+func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+    _ = LocalGeofence.shared
+    return true
+}
+```
+
+The plugin ships a privacy manifest (`PrivacyInfo.xcprivacy`) declaring its UserDefaults use (reason `CA92.1`).
 
 ### Android
 
@@ -99,6 +114,10 @@ await LocalGeofence.clearEvents({ ids: events.map((e) => e.id) });
 - Geofence accuracy depends on the OS: expect 100–200 m jitter and delays of a few minutes, especially on Android.
 - Android timestamps come from the triggering location, iOS timestamps from the moment of delivery.
 - At most the newest 500 events are kept.
+- Notifications are meant for the background. While the app is in the foreground iOS shows them only if
+  another plugin (e.g. `@capacitor/local-notifications` with `presentationOptions`) presents notifications;
+  use the `transition` listener in the foreground instead.
+- Android re-adds regions after reboot, app update, location being turned back on, and on every app resume.
 
 ## API
 

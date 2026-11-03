@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import LocalGeofencePlugin
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,7 +8,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Recreate the region monitor before anything else when iOS relaunches the app for a geofence event.
+        _ = LocalGeofence.shared
         return true
     }
 

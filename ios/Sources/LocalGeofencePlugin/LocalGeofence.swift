@@ -29,7 +29,14 @@ import UserNotifications
         return manager.authorizationStatus
     }
 
-    func startMonitoring(_ region: [String: Any]) throws {
+    var hasFullAccuracy: Bool {
+        return manager.accuracyAuthorization == .fullAccuracy
+    }
+
+    /// Pending addRegion completions per region id, finished by didStartMonitoringFor / monitoringDidFailFor.
+    private var pendingStarts: [String: (Error?) -> Void] = [:]
+
+    func startMonitoring(_ region: [String: Any], done: @escaping (Error?) -> Void) throws {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
             throw GeofenceError("Region monitoring is not available on this device")
         }
@@ -47,8 +54,14 @@ import UserNotifications
         // Both directions are always monitored so the last transition stays known; handle() filters.
         circular.notifyOnEntry = true
         circular.notifyOnExit = true
+        pendingStarts[id]?(GeofenceError("Replaced by a newer addRegion call"))
+        pendingStarts[id] = done
         store.saveRegion(region)
         manager.startMonitoring(for: circular)
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didStartMonitoringFor region: CLRegion) {
+        pendingStarts.removeValue(forKey: region.identifier)?(nil)
     }
 
     func stopMonitoring(_ id: String) {
@@ -66,13 +79,26 @@ import UserNotifications
         manager.requestWhenInUseAuthorization()
     }
 
-    /// iOS shows the "always" upgrade prompt only once; later requests return without a callback.
+    /// iOS shows the "always" upgrade prompt only once and ignores the request after "Allow Once";
+    /// both return without any callback, so a request that shows no prompt resolves after a short delay.
     func requestAlways(_ done: @escaping () -> Void) {
         let status = manager.authorizationStatus
         guard status == .notDetermined || (status == .authorizedWhenInUse && !store.alwaysAsked) else { return done() }
-        store.alwaysAsked = true
-        waitForAuthorization(done)
+        var promptShown = false
+        let resignObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            promptShown = true
+            self?.store.alwaysAsked = true
+        }
+        waitForAuthorization {
+            NotificationCenter.default.removeObserver(resignObserver)
+            done()
+        }
         manager.requestAlwaysAuthorization()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            if !promptShown { self?.flushAuthorizationWaiters() }
+        }
     }
 
     /// Resolves on the authorization callback, or when the app becomes active again after the
@@ -113,14 +139,17 @@ import UserNotifications
     }
 
     public func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
+        if let id = region?.identifier, let done = pendingStarts.removeValue(forKey: id) {
+            // iOS already dropped any previous region with this id, so nothing is monitored under it now.
+            store.removeRegion(id)
+            done(error)
+        }
         CAPLog.print("⚡️  LocalGeofence: " + "Monitoring failed for \(region?.identifier ?? "unknown region"): \(error.localizedDescription)")
     }
 
     private func handle(_ region: CLRegion, transition: String) {
         guard let stored = store.region(region.identifier) else { return }
-        guard store.markTransition(region.identifier, transition: transition) else { return }
-        guard stored[transition == "enter" ? "notifyOnEnter" : "notifyOnExit"] as? Bool ?? true else { return }
-
+        let recorded = stored[transition == "enter" ? "notifyOnEnter" : "notifyOnExit"] as? Bool ?? true
         let timestamp = Date().timeIntervalSince1970 * 1000
         let event: [String: Any] = [
             "id": UUID().uuidString,
@@ -128,7 +157,7 @@ import UserNotifications
             "transition": transition,
             "timestamp": timestamp
         ]
-        store.addEvent(event)
+        guard store.record(region.identifier, transition: transition, event: recorded ? event : nil), recorded else { return }
         if let notification = stored[transition == "enter" ? "enterNotification" : "exitNotification"] as? [String: Any] {
             showNotification(regionId: region.identifier, notification: notification, timestamp: timestamp)
         }

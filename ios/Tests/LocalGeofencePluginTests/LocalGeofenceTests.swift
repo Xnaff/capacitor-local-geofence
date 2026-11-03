@@ -28,12 +28,12 @@ class LocalGeofenceTests: XCTestCase {
     func testFilteredDirectionStillUpdatesLastTransition() {
         let store = GeofenceStore()
         store.removeRegion("exit-only")
-        XCTAssertTrue(store.markTransition("exit-only", transition: "exit"))
+        XCTAssertTrue(store.record("exit-only", transition: "exit", event: nil))
         // An enter the region does not record must still be remembered ...
-        XCTAssertTrue(store.markTransition("exit-only", transition: "enter"))
+        XCTAssertTrue(store.record("exit-only", transition: "enter", event: nil))
         // ... so the next exit counts as new.
-        XCTAssertTrue(store.markTransition("exit-only", transition: "exit"))
-        XCTAssertFalse(store.markTransition("exit-only", transition: "exit"))
+        XCTAssertTrue(store.record("exit-only", transition: "exit", event: nil))
+        XCTAssertFalse(store.record("exit-only", transition: "exit", event: nil))
         store.removeRegion("exit-only")
     }
 }

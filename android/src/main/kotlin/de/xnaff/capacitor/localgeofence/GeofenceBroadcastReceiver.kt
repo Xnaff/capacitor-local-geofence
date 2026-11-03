@@ -26,7 +26,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) {
-            // GEOFENCE_NOT_AVAILABLE: location was turned off; regions stay stored and are restored on app start/resume and boot.
+            // GEOFENCE_NOT_AVAILABLE: location was turned off; regions stay stored and are restored when location is turned back on (GeofenceBootReceiver), on app resume and on boot.
             Logger.error("LocalGeofence", "Geofence error: ${GeofenceStatusCodes.getStatusCodeString(event.errorCode)}", null)
             return
         }
@@ -40,15 +40,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         for (geofence in event.triggeringGeofences.orEmpty()) {
             val region = store.region(geofence.requestId) ?: continue
-            if (!store.markTransition(geofence.requestId, transition)) continue
-            if (!region.optBoolean(if (transition == "enter") "notifyOnEnter" else "notifyOnExit", true)) continue
-
+            val recorded = region.optBoolean(if (transition == "enter") "notifyOnEnter" else "notifyOnExit", true)
             val record = JSONObject()
                 .put("id", UUID.randomUUID().toString())
                 .put("regionId", geofence.requestId)
                 .put("transition", transition)
                 .put("timestamp", timestamp)
-            if (!store.addEvent(record)) Logger.error("LocalGeofence", "Could not persist transition event", null)
+            if (!store.record(geofence.requestId, transition, if (recorded) record else null) || !recorded) continue
             region.optJSONObject(if (transition == "enter") "enterNotification" else "exitNotification")?.let {
                 showNotification(context, region, it, timestamp)
             }

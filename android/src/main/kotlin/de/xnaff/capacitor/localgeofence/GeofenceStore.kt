@@ -23,7 +23,8 @@ class GeofenceStore(context: Context) {
     fun saveRegion(region: JSONObject): Boolean = synchronized(LOCK) {
         val map = JSONObject(prefs.getString(KEY_REGIONS, "{}")!!)
         map.put(region.getString("id"), region)
-        prefs.edit().putString(KEY_REGIONS, map.toString()).commit()
+        // New geometry: the previous position relative to the old region says nothing about this one.
+        prefs.edit().putString(KEY_REGIONS, map.toString()).remove(KEY_LAST_PREFIX + region.getString("id")).commit()
     }
 
     fun removeRegion(id: String): Boolean = synchronized(LOCK) {
@@ -38,18 +39,15 @@ class GeofenceStore(context: Context) {
     }
 
     /**
-     * Remembers [transition] for the region and returns true when it differs from the previous one.
-     * Also called for directions the region does not record, so a later opposite event is not lost.
+     * Remembers [transition] and, in the same commit, appends [event]. Returns false for a repeated
+     * transition or a failed write. Called with a null event for directions the region does not
+     * record, so a later opposite event is not lost. commit() so a dying receiver process keeps it.
      */
-    fun markTransition(regionId: String, transition: String): Boolean = synchronized(LOCK) {
+    fun record(regionId: String, transition: String, event: JSONObject?): Boolean = synchronized(LOCK) {
         if (!GeofenceLogic.isNewTransition(prefs.getString(KEY_LAST_PREFIX + regionId, null), transition)) return false
-        prefs.edit().putString(KEY_LAST_PREFIX + regionId, transition).commit()
-    }
-
-    /** Appends the event; commit() so a receiver process that dies right after keeps it. */
-    fun addEvent(event: JSONObject): Boolean = synchronized(LOCK) {
-        val events = GeofenceLogic.keepNewest(events() + event)
-        prefs.edit().putString(KEY_EVENTS, JSONArray(events).toString()).commit()
+        val editor = prefs.edit().putString(KEY_LAST_PREFIX + regionId, transition)
+        if (event != null) editor.putString(KEY_EVENTS, JSONArray(GeofenceLogic.keepNewest(events() + event)).toString())
+        editor.commit()
     }
 
     fun clearEvents(ids: Set<String>?): Boolean = synchronized(LOCK) {
