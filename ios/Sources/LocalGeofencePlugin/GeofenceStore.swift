@@ -31,6 +31,22 @@ final class GeofenceStore {
         save(current)
     }
 
+    func lastTransition(_ id: String) -> String? {
+        return state().last[id]
+    }
+
+    /// Puts back a region and its last transition exactly as they were before a failed operation.
+    func restore(_ id: String, region: [String: Any]?, last: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        var map = regionMap()
+        map[id] = region
+        defaults.set(map, forKey: regionsKey)
+        var current = state()
+        current.last[id] = last
+        save(current)
+    }
+
     func removeRegion(_ id: String) {
         lock.lock()
         defer { lock.unlock() }

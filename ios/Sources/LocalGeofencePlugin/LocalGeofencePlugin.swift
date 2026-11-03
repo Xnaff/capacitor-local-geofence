@@ -119,7 +119,13 @@ public class LocalGeofencePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func clearEvents(_ call: CAPPluginCall) {
-        implementation.store.clearEvents(call.getArray("ids", String.self).map(Set.init))
+        // A present but malformed ids value must never fall through to "delete all".
+        var ids: Set<String>?
+        if call.options["ids"] != nil {
+            guard let list = call.getArray("ids", String.self) else { return call.reject("ids must be an array of strings") }
+            ids = Set(list)
+        }
+        implementation.store.clearEvents(ids)
         call.resolve()
     }
 

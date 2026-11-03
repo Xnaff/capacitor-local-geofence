@@ -50,4 +50,17 @@ class LocalGeofenceTests: XCTestCase {
         store.clearEvents(nil)
         XCTAssertTrue(store.events().isEmpty)
     }
+
+    func testRestorePutsBackRegionAndLastTransition() {
+        let store = GeofenceStore()
+        store.saveRegion(["id": "home", "radius": 100.0])
+        XCTAssertTrue(store.record("home", transition: "enter", event: nil))
+        let previous = store.region("home")
+        store.saveRegion(["id": "home", "radius": 300.0])
+        XCTAssertNil(store.lastTransition("home"))
+        store.restore("home", region: previous, last: "enter")
+        XCTAssertEqual(store.region("home")?["radius"] as? Double, 100.0)
+        XCTAssertEqual(store.lastTransition("home"), "enter")
+        store.removeRegion("home")
+    }
 }

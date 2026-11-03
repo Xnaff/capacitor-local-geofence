@@ -34,7 +34,15 @@ import UserNotifications
     }
 
     /// Pending addRegion completions per region id, finished by didStartMonitoringFor / monitoringDidFailFor.
-    private var pendingStarts: [String: (previous: [String: Any]?, done: (Error?) -> Void)] = [:]
+    private struct PendingStart {
+        let previous: [String: Any]?
+        let previousLast: String?
+        /// True for the re-registration of `previous` after a failed replacement.
+        let isRollback: Bool
+        let done: (Error?) -> Void
+    }
+
+    private var pendingStarts: [String: PendingStart] = [:]
 
     func startMonitoring(_ region: [String: Any], done: @escaping (Error?) -> Void) throws {
         guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
@@ -53,7 +61,7 @@ import UserNotifications
         guard pendingStarts[id] == nil else {
             throw GeofenceError("addRegion for \(id) is still pending")
         }
-        pendingStarts[id] = (previous: store.region(id), done: done)
+        pendingStarts[id] = PendingStart(previous: store.region(id), previousLast: store.lastTransition(id), isRollback: false, done: done)
         store.saveRegion(region)
         manager.startMonitoring(for: circularRegion(id: id, latitude: latitude, longitude: longitude, radius: radius))
     }
@@ -153,17 +161,20 @@ import UserNotifications
         let ids = region.map { [$0.identifier] } ?? Array(pendingStarts.keys)
         for id in ids {
             guard let pending = pendingStarts.removeValue(forKey: id) else { continue }
+            if pending.isRollback {
+                // The previous configuration stays stored; it is monitored again on the next addRegion.
+                pending.done(error)
+                continue
+            }
             // iOS already dropped any previous region with this id; monitor the previous one again.
+            store.restore(id, region: pending.previous, last: pending.previousLast)
             if let previous = pending.previous,
                let latitude = previous["latitude"] as? Double,
                let longitude = previous["longitude"] as? Double,
                let radius = previous["radius"] as? Double {
-                store.saveRegion(previous)
                 // Keep the id reserved until the rollback's own callback, so it cannot answer a newer call.
-                pendingStarts[id] = (previous: nil, done: { _ in })
+                pendingStarts[id] = PendingStart(previous: previous, previousLast: pending.previousLast, isRollback: true, done: { _ in })
                 manager.startMonitoring(for: circularRegion(id: id, latitude: latitude, longitude: longitude, radius: radius))
-            } else {
-                store.removeRegion(id)
             }
             pending.done(error)
         }

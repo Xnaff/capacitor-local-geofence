@@ -27,6 +27,17 @@ class GeofenceStore(context: Context) {
         prefs.edit().putString(KEY_REGIONS, map.toString()).remove(KEY_LAST_PREFIX + region.getString("id")).commit()
     }
 
+    fun lastTransition(id: String): String? = prefs.getString(KEY_LAST_PREFIX + id, null)
+
+    /** Puts back a region and its last transition exactly as they were before a failed operation. */
+    fun restore(id: String, region: JSONObject?, last: String?): Boolean = synchronized(LOCK) {
+        val map = JSONObject(prefs.getString(KEY_REGIONS, "{}")!!)
+        if (region != null) map.put(id, region) else map.remove(id)
+        val editor = prefs.edit().putString(KEY_REGIONS, map.toString())
+        if (last != null) editor.putString(KEY_LAST_PREFIX + id, last) else editor.remove(KEY_LAST_PREFIX + id)
+        editor.commit()
+    }
+
     fun removeRegion(id: String): Boolean = synchronized(LOCK) {
         val map = JSONObject(prefs.getString(KEY_REGIONS, "{}")!!)
         map.remove(id)

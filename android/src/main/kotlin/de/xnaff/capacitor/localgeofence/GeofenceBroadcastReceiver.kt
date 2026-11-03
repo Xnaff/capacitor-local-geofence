@@ -53,7 +53,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 .put("timestamp", timestamp)
             if (!store.record(geofence.requestId, transition, if (recorded) record else null) || !recorded) continue
             region.optJSONObject(if (transition == "enter") "enterNotification" else "exitNotification")?.let {
-                showNotification(context, region, it, timestamp)
+                try {
+                    showNotification(context, region, it, timestamp)
+                } catch (error: Exception) {
+                    // The event is already stored; a broken notification must not drop later transitions.
+                    Logger.error("LocalGeofence", "Could not show notification", error)
+                }
             }
             LocalGeofencePlugin.emitTransition(record)
         }
@@ -93,7 +98,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             val id = context.resources.getIdentifier(name, "drawable", context.packageName)
             if (id != 0) return id
         }
-        return context.applicationInfo.icon
+        return context.applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_dialog_map
     }
 
     companion object {

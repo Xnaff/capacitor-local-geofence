@@ -133,7 +133,14 @@ class LocalGeofencePlugin : Plugin() {
 
     @PluginMethod
     fun clearEvents(call: PluginCall) {
-        if (store.clearEvents(call.getArray("ids")?.toList<String>()?.toSet())) call.resolve() else call.reject("Could not persist", "STORAGE_FAILED")
+        // A present but malformed ids value must never fall through to "delete all".
+        val ids = if (call.data.has("ids")) {
+            val array = call.data.optJSONArray("ids") ?: return call.reject("ids must be an array of strings")
+            (0 until array.length()).map { array.opt(it) as? String ?: return call.reject("ids must be an array of strings") }.toSet()
+        } else {
+            null
+        }
+        if (store.clearEvents(ids)) call.resolve() else call.reject("Could not persist", "STORAGE_FAILED")
     }
 
     private fun notification(source: JSObject): JSONObject =
