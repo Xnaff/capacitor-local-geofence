@@ -15,8 +15,14 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.tasks.Task
 import org.json.JSONObject
 
-/** Registers stored regions with the Play services geofencing client. */
+/**
+ * Registers stored regions with the Play services geofencing client. Every store change and its
+ * client submission happen under one lock, so a restore never submits geometry older than a
+ * concurrent add or remove; the client applies submissions in order.
+ */
 object GeofenceRegistrar {
+
+    private val LOCK = Any()
 
     private const val REQUEST_CODE = 0x6E0F
 
@@ -24,8 +30,39 @@ object GeofenceRegistrar {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    /** Stores [region] and submits it; a failed registration restores the previous stored region. */
+    fun add(context: Context, region: JSONObject): Task<Void> = synchronized(LOCK) {
+        val store = GeofenceStore(context)
+        val id = region.getString("id")
+        val previous = store.region(id)
+        if (!store.saveRegion(region)) throw IllegalStateException("Could not persist region")
+        val task = try {
+            register(context, region)
+        } catch (error: Exception) {
+            revert(store, id, region, previous)
+            throw error
+        }
+        task.addOnFailureListener { synchronized(LOCK) { revert(store, id, region, previous) } }
+    }
+
+    /** Removes the stored region and submits the removal; a failed removal restores it. */
+    fun remove(context: Context, id: String): Task<Void> = synchronized(LOCK) {
+        val store = GeofenceStore(context)
+        val previous = store.region(id)
+        if (!store.removeRegion(id)) throw IllegalStateException("Could not persist removal")
+        LocationServices.getGeofencingClient(context).removeGeofences(listOf(id)).addOnFailureListener {
+            synchronized(LOCK) { if (previous != null && store.region(id) == null) store.saveRegion(previous) }
+        }
+    }
+
+    /** Undoes [attempted] only if no newer add or remove replaced it meanwhile. */
+    private fun revert(store: GeofenceStore, id: String, attempted: JSONObject, previous: JSONObject?) {
+        if (store.region(id)?.toString() != attempted.toString()) return
+        if (previous != null) store.saveRegion(previous) else store.removeRegion(id)
+    }
+
     @SuppressLint("MissingPermission")
-    fun register(context: Context, region: JSONObject): Task<Void> {
+    private fun register(context: Context, region: JSONObject): Task<Void> {
         val geofence = Geofence.Builder()
             .setRequestId(region.getString("id"))
             .setCircularRegion(region.getDouble("latitude"), region.getDouble("longitude"), region.getDouble("radius").toFloat())
@@ -37,13 +74,10 @@ object GeofenceRegistrar {
         return LocationServices.getGeofencingClient(context).addGeofences(request, pendingIntent(context))
     }
 
-    fun unregister(context: Context, id: String): Task<Void> =
-        LocationServices.getGeofencingClient(context).removeGeofences(listOf(id))
-
     /** Play services drops all geofences on reboot, app update and location toggles; re-add them. */
-    fun restoreAll(context: Context): List<Task<Void>> {
+    fun restoreAll(context: Context): List<Task<Void>> = synchronized(LOCK) {
         if (!hasLocationPermission(context)) return emptyList()
-        return GeofenceStore(context).regions().mapNotNull { region ->
+        GeofenceStore(context).regions().mapNotNull { region ->
             try {
                 register(context, region).addOnFailureListener { error ->
                     Logger.error("LocalGeofence", "Could not restore region ${region.optString("id")}", error)

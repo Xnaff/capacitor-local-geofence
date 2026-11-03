@@ -7,8 +7,8 @@ final class GeofenceStore {
     private let defaults = UserDefaults.standard
     private let lock = NSLock()
     private let regionsKey = "de.xnaff.capacitor.localgeofence.regions"
-    private let eventsKey = "de.xnaff.capacitor.localgeofence.events"
-    private let lastKey = "de.xnaff.capacitor.localgeofence.last"
+    /// Events and last transitions live in one value so a single write updates both.
+    private let stateKey = "de.xnaff.capacitor.localgeofence.state"
     private let alwaysAskedKey = "de.xnaff.capacitor.localgeofence.alwaysAsked"
 
     func regions() -> [[String: Any]] {
@@ -27,9 +27,9 @@ final class GeofenceStore {
         map[id] = region
         defaults.set(map, forKey: regionsKey)
         // New geometry: the previous position relative to the old region says nothing about this one.
-        var last = lastMap()
-        last.removeValue(forKey: id)
-        defaults.set(last, forKey: lastKey)
+        var current = state()
+        current.last.removeValue(forKey: id)
+        save(current)
     }
 
     func removeRegion(_ id: String) {
@@ -38,9 +38,9 @@ final class GeofenceStore {
         var map = regionMap()
         map.removeValue(forKey: id)
         defaults.set(map, forKey: regionsKey)
-        var last = lastMap()
-        last.removeValue(forKey: id)
-        defaults.set(last, forKey: lastKey)
+        var current = state()
+        current.last.removeValue(forKey: id)
+        save(current)
     }
 
     /// Remembers `transition` and, together with it, appends `event`. Returns false for a repeated
@@ -49,25 +49,26 @@ final class GeofenceStore {
     func record(_ regionId: String, transition: String, event: [String: Any]?) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        var last = lastMap()
-        guard GeofenceLogic.isNewTransition(last: last[regionId], transition: transition) else { return false }
-        last[regionId] = transition
-        defaults.set(last, forKey: lastKey)
+        var current = state()
+        guard GeofenceLogic.isNewTransition(last: current.last[regionId], transition: transition) else { return false }
+        current.last[regionId] = transition
         if let event = event {
-            defaults.set(GeofenceLogic.keepNewest(events() + [event]), forKey: eventsKey)
+            current.events = GeofenceLogic.keepNewest(current.events + [event])
         }
+        save(current)
         return true
     }
 
     func events() -> [[String: Any]] {
-        return defaults.array(forKey: eventsKey) as? [[String: Any]] ?? []
+        return state().events
     }
 
     func clearEvents(_ ids: Set<String>?) {
         lock.lock()
         defer { lock.unlock() }
-        let kept = ids.map { ids in events().filter { !ids.contains($0["id"] as? String ?? "") } } ?? []
-        defaults.set(kept, forKey: eventsKey)
+        var current = state()
+        current.events = ids.map { ids in current.events.filter { !ids.contains($0["id"] as? String ?? "") } } ?? []
+        save(current)
     }
 
     var alwaysAsked: Bool {
@@ -79,7 +80,12 @@ final class GeofenceStore {
         return defaults.dictionary(forKey: regionsKey) as? [String: [String: Any]] ?? [:]
     }
 
-    private func lastMap() -> [String: String] {
-        return defaults.dictionary(forKey: lastKey) as? [String: String] ?? [:]
+    private func state() -> (events: [[String: Any]], last: [String: String]) {
+        let value = defaults.dictionary(forKey: stateKey) ?? [:]
+        return (value["events"] as? [[String: Any]] ?? [], value["last"] as? [String: String] ?? [:])
+    }
+
+    private func save(_ state: (events: [[String: Any]], last: [String: String])) {
+        defaults.set(["events": state.events, "last": state.last], forKey: stateKey)
     }
 }

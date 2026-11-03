@@ -46,15 +46,21 @@ import UserNotifications
               let radius = region["radius"] as? Double else {
             throw GeofenceError("Invalid region")
         }
+        guard radius <= manager.maximumRegionMonitoringDistance else {
+            throw GeofenceError("radius must not exceed \(manager.maximumRegionMonitoringDistance) m on this device")
+        }
+        // Core Location cannot cancel a start, so its callback would answer a newer call for the same id.
+        guard pendingStarts[id] == nil else {
+            throw GeofenceError("addRegion for \(id) is still pending")
+        }
         let circular = CLCircularRegion(
             center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-            radius: min(radius, manager.maximumRegionMonitoringDistance),
+            radius: radius,
             identifier: id
         )
         // Both directions are always monitored so the last transition stays known; handle() filters.
         circular.notifyOnEntry = true
         circular.notifyOnExit = true
-        pendingStarts[id]?(GeofenceError("Replaced by a newer addRegion call"))
         pendingStarts[id] = done
         store.saveRegion(region)
         manager.startMonitoring(for: circular)
@@ -64,7 +70,10 @@ import UserNotifications
         pendingStarts.removeValue(forKey: region.identifier)?(nil)
     }
 
-    func stopMonitoring(_ id: String) {
+    func stopMonitoring(_ id: String) throws {
+        guard pendingStarts[id] == nil else {
+            throw GeofenceError("addRegion for \(id) is still pending")
+        }
         for region in manager.monitoredRegions where region.identifier == id {
             manager.stopMonitoring(for: region)
         }

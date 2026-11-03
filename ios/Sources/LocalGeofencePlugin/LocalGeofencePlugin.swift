@@ -98,8 +98,12 @@ public class LocalGeofencePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func removeRegion(_ call: CAPPluginCall) {
         guard let id = call.getString("id") else { return call.reject("id is required") }
         DispatchQueue.main.async {
-            self.implementation.stopMonitoring(id)
-            call.resolve()
+            do {
+                try self.implementation.stopMonitoring(id)
+                call.resolve()
+            } catch {
+                call.reject(error.localizedDescription, "UNREGISTER_FAILED")
+            }
         }
     }
 

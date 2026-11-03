@@ -36,4 +36,18 @@ class LocalGeofenceTests: XCTestCase {
         XCTAssertFalse(store.record("exit-only", transition: "exit", event: nil))
         store.removeRegion("exit-only")
     }
+
+    func testRecordStoresEventWithTransitionAndReplacementResetsIt() {
+        let store = GeofenceStore()
+        store.clearEvents(nil)
+        let event: [String: Any] = ["id": "e1", "regionId": "office", "transition": "exit", "timestamp": 1.0]
+        XCTAssertTrue(store.record("office", transition: "exit", event: event))
+        XCTAssertEqual(store.events().compactMap { $0["id"] as? String }, ["e1"])
+        // Replacing the region forgets the old position, so the same direction counts again.
+        store.saveRegion(["id": "office"])
+        XCTAssertTrue(store.record("office", transition: "exit", event: nil))
+        store.removeRegion("office")
+        store.clearEvents(nil)
+        XCTAssertTrue(store.events().isEmpty)
+    }
 }

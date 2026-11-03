@@ -48,7 +48,8 @@ Add to `ios/App/App/Info.plist`:
 ```
 
 No background mode is required: region monitoring relaunches the app in the background for each transition.
-iOS monitors at most 20 regions per app. Events while the app is closed need the "Always" permission and
+iOS monitors at most 20 regions per app. Radii above the device's `maximumRegionMonitoringDistance` are rejected.
+Events while the app is closed need **Background App Refresh** enabled for the app, the "Always" permission and
 **precise location** (with approximate location `location` reports `denied` and `addRegion` rejects).
 
 Recreate the region monitor at launch so events that relaunch a closed app are not missed before the
