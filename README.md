@@ -118,7 +118,8 @@ await LocalGeofence.clearEvents({ ids: events.map((e) => e.id) });
 - Notifications are meant for the background. While the app is in the foreground iOS shows them only if
   another plugin (e.g. `@capacitor/local-notifications` with `presentationOptions`) presents notifications;
   use the `transition` listener in the foreground instead.
-- Android re-adds regions after reboot, app update, location being turned back on, and on every app resume.
+- Android re-adds regions after reboot, app update, location being turned back on (not delivered on every
+  Android version), with background retries after a geofencing outage, and on every app resume.
 
 ## API
 

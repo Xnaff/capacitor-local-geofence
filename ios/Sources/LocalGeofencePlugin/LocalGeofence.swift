@@ -92,28 +92,17 @@ import UserNotifications
         manager.requestWhenInUseAuthorization()
     }
 
-    /// iOS shows the "always" upgrade prompt only once and ignores the request after "Allow Once";
-    /// both return without any callback, so a request that shows no prompt resolves after a short delay.
+    /// iOS itself limits the "always" upgrade prompt and ignores the request after "Allow Once" or a
+    /// previous answer, without any callback; a request that shows no prompt resolves after a short delay.
     func requestAlways(_ done: @escaping () -> Void) {
         let status = manager.authorizationStatus
-        guard status == .notDetermined || (status == .authorizedWhenInUse && !store.alwaysAsked) else { return done() }
+        guard status == .notDetermined || status == .authorizedWhenInUse else { return done() }
         var promptShown = false
-        var wentToBackground = false
         let resignObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
         ) { _ in promptShown = true }
-        let backgroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
-        ) { _ in wentToBackground = true }
-        waitForAuthorization { [weak self] in
+        waitForAuthorization {
             NotificationCenter.default.removeObserver(resignObserver)
-            NotificationCenter.default.removeObserver(backgroundObserver)
-            // The system prompt resigns active without backgrounding the app; a call or app switch backgrounds
-            // it and leaves the upgrade askable. Declining keeps whenInUse, so a status change alone is not enough.
-            guard let self = self else { return done() }
-            if self.manager.authorizationStatus != status || (promptShown && !wentToBackground) {
-                self.store.alwaysAsked = true
-            }
             done()
         }
         manager.requestAlwaysAuthorization()
@@ -170,6 +159,8 @@ import UserNotifications
                let longitude = previous["longitude"] as? Double,
                let radius = previous["radius"] as? Double {
                 store.saveRegion(previous)
+                // Keep the id reserved until the rollback's own callback, so it cannot answer a newer call.
+                pendingStarts[id] = (previous: nil, done: { _ in })
                 manager.startMonitoring(for: circularRegion(id: id, latitude: latitude, longitude: longitude, radius: radius))
             } else {
                 store.removeRegion(id)

@@ -26,9 +26,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) {
-            // GEOFENCE_NOT_AVAILABLE: location was turned off; regions stay stored and are restored when location is turned back on (GeofenceBootReceiver), on app resume and on boot.
+            // GEOFENCE_NOT_AVAILABLE: location was turned off; regions stay stored and are re-added by GeofenceRestoreWorker, on app resume and on boot.
             Logger.error("LocalGeofence", "Geofence error: ${GeofenceStatusCodes.getStatusCodeString(event.errorCode)}", null)
-            if (event.errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) GeofenceStore(context).forgetTransitions()
+            if (event.errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
+                GeofenceStore(context).forgetTransitions()
+                // Retries with backoff; app resume and boot also restore after longer outages.
+                GeofenceRestoreWorker.enqueue(context)
+            }
             return
         }
         val transition = when (event.geofenceTransition) {

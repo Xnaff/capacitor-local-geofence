@@ -3,6 +3,7 @@ package de.xnaff.capacitor.localgeofence
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
@@ -143,8 +144,10 @@ class LocalGeofencePlugin : Plugin() {
         val background = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) getPermissionState(BACKGROUND_LOCATION).toString() else location
         val notifications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getPermissionState(NOTIFICATIONS).toString()
-        } else {
+        } else if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
             "granted"
+        } else {
+            "denied"
         }
         // Coarse-only location cannot geofence; report it as not granted.
         val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED

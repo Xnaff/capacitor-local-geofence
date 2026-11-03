@@ -142,7 +142,8 @@ public class LocalGeofencePlugin: CAPPlugin, CAPBridgedPlugin {
                 background = "granted"
             case .authorizedWhenInUse:
                 location = "granted"
-                background = self.implementation.store.alwaysAsked ? "denied" : "prompt"
+                // iOS does not reveal whether the upgrade prompt is still available.
+                background = "prompt"
             case .notDetermined:
                 location = "prompt"
                 background = "prompt"

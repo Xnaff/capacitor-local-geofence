@@ -9,7 +9,6 @@ final class GeofenceStore {
     private let regionsKey = "de.xnaff.capacitor.localgeofence.regions"
     /// Events and last transitions live in one value so a single write updates both.
     private let stateKey = "de.xnaff.capacitor.localgeofence.state"
-    private let alwaysAskedKey = "de.xnaff.capacitor.localgeofence.alwaysAsked"
 
     func regions() -> [[String: Any]] {
         return Array(regionMap().values)
@@ -69,11 +68,6 @@ final class GeofenceStore {
         var current = state()
         current.events = ids.map { ids in current.events.filter { !ids.contains($0["id"] as? String ?? "") } } ?? []
         save(current)
-    }
-
-    var alwaysAsked: Bool {
-        get { defaults.bool(forKey: alwaysAskedKey) }
-        set { defaults.set(newValue, forKey: alwaysAskedKey) }
     }
 
     private func regionMap() -> [String: [String: Any]] {
