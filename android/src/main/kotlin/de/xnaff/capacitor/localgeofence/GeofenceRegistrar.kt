@@ -57,7 +57,11 @@ object GeofenceRegistrar {
             inFlight.remove(id)
             throw error
         }
-        task.addOnFailureListener { synchronized(LOCK) { store.restore(id, previous, previousLast) } }.finishing(id)
+        task.addOnFailureListener {
+            synchronized(LOCK) { store.restore(id, previous, previousLast) }
+            // A restore that skipped this id meanwhile must still register the rolled-back region.
+            if (previous != null) GeofenceRestoreWorker.enqueue(context)
+        }.finishing(id)
     }
 
     /** Removes the stored region and submits the removal; a failed removal restores it. */
@@ -72,6 +76,7 @@ object GeofenceRegistrar {
         }
         LocationServices.getGeofencingClient(context).removeGeofences(listOf(id)).addOnFailureListener {
             synchronized(LOCK) { store.restore(id, previous, previousLast) }
+            if (previous != null) GeofenceRestoreWorker.enqueue(context)
         }.finishing(id)
     }
 

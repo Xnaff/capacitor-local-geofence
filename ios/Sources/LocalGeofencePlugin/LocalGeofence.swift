@@ -33,11 +33,19 @@ import UserNotifications
     /// Re-monitors stored regions iOS is not monitoring (e.g. after a failed rollback).
     func reconcile() {
         guard manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse else { return }
-        let monitored = Set(manager.monitoredRegions.map { $0.identifier })
-        let missing = store.regions().compactMap { $0["id"] as? String }.filter { !monitored.contains($0) && pendingStarts[$0] == nil }
+        // Compare geometry too: a stale registration with the same id is not the stored region.
+        var monitored: [String: CLCircularRegion] = [:]
+        for case let circular as CLCircularRegion in manager.monitoredRegions { monitored[circular.identifier] = circular }
+        let matches: ([String: Any]) -> Bool = { region in
+            guard let id = region["id"] as? String, let circular = monitored[id] else { return false }
+            return circular.center.latitude == region["latitude"] as? Double
+                && circular.center.longitude == region["longitude"] as? Double
+                && circular.radius == region["radius"] as? Double
+        }
+        let missing = store.regions().filter { !matches($0) }.compactMap { $0["id"] as? String }.filter { pendingStarts[$0] == nil }
         store.forgetTransitions(missing)
         for region in store.regions() {
-            guard let id = region["id"] as? String, !monitored.contains(id), pendingStarts[id] == nil,
+            guard let id = region["id"] as? String, missing.contains(id),
                   let latitude = region["latitude"] as? Double,
                   let longitude = region["longitude"] as? Double,
                   let radius = region["radius"] as? Double else { continue }

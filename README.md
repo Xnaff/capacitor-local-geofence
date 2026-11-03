@@ -118,6 +118,9 @@ await LocalGeofence.clearEvents({ ids: events.map((e) => e.id) });
 - Notifications are meant for the background. While the app is in the foreground iOS shows them only if
   another plugin (e.g. `@capacitor/local-notifications` with `presentationOptions`) presents notifications;
   use the `transition` listener in the foreground instead.
+- Android: an ordinary process kill keeps monitoring, but **force stop** (Settings → Force stop) removes all
+  geofences; monitoring resumes only when the user opens the app again, and transitions in between are lost.
+  On iOS, force-quitting from the app switcher behaves similarly on some versions.
 - Android re-adds regions after reboot, app update, location being turned back on (not delivered on every
   Android version), with background retries after a geofencing outage, and on every app resume.
 
